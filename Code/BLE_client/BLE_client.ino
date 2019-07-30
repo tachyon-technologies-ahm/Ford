@@ -54,8 +54,12 @@
 
 #include "BLEDevice.h"
 
-
 #define LED 2
+
+volatile int interruptCounter;
+
+hw_timer_t * timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // The remote Nordic UART service service we wish to connect to.
 // This service exposes two characteristics: one for transmitting and one for receiving (as seen from the client).
@@ -75,6 +79,12 @@ static boolean connected = false;
 static BLERemoteCharacteristic* pTXCharacteristic;
 static BLERemoteCharacteristic* pRXCharacteristic;
 
+void IRAM_ATTR onTimer() {
+  portENTER_CRITICAL_ISR(&timerMux);
+  interruptCounter++;
+  portEXIT_CRITICAL_ISR(&timerMux);
+}
+
 static void notifyCallback(
   BLERemoteCharacteristic* pBLERemoteCharacteristic,
   uint8_t* pData,
@@ -87,6 +97,9 @@ static void notifyCallback(
     if (pData[i] == 'a')
       digitalWrite(LED,!digitalRead(LED));
     Serial.print(" ");
+
+    timerAlarmDisable(timer);
+    interruptCounter = 0;
   }
   Serial.println();
 }
@@ -175,6 +188,10 @@ void setup() {
   Serial.println("Starting Arduino BLE Central Mode (Client) Nordic UART Service");
 
   pinMode(LED,OUTPUT);
+
+  timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer, &onTimer, true);
+  timerAlarmWrite(timer, 6000000, true);
   
   BLEDevice::init("");
 
@@ -210,22 +227,36 @@ void loop() {
   // If we are connected to a peer BLE Server perform the following actions every five seconds:
   //   Toggle notifications for the TX Characteristic on and off.
   //   Update the RX characteristic with the current time since boot string.
+  
   if (connected) {
-    if (1) {
-      Serial.println("Notifications turned on");
-      pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
-    } else {
-      Serial.println("Notifications turned off");
-      pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOff, 2, true);
-    }
+//    if (1) {
+//      Serial.println("Notifications turned on");
+//      pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
+//    } else {
+//      Serial.println("Notifications turned off");
+//      pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOff, 2, true);
+//    }
 
-    // Toggle on/off value for notifications.
-    onoff = onoff ? 0 : 1;
+//     Toggle on/off value for notifications.
+//    onoff = onoff ? 0 : 1;
 
     // Set the characteristic's value to be the array of bytes that is actually a string
     String timeSinceBoot = "Time since boot: " + String(millis()/1000);
     pRXCharacteristic->writeValue(timeSinceBoot.c_str(), timeSinceBoot.length());
-  }
+    timerAlarmEnable(timer);
+    if (interruptCounter > 0) {
+      portENTER_CRITICAL(&timerMux);
+      interruptCounter--;
+      portEXIT_CRITICAL(&timerMux);
+      connected = 0;
+    }
 
-  delay(5000); // Delay five seconds between loops.
+  } else {
+    BLEScan* pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setActiveScan(true);
+    pBLEScan->start(30);
+  }
+  
+  delay(500); // Delay five seconds between loops.
 } // End of loop
