@@ -56,6 +56,14 @@
 
 #define LED 2
 
+struct Button {
+    const uint8_t PIN;
+    uint32_t numberKeyPresses;
+    bool pressed;
+};
+
+Button button1 = {33, 0, false};
+
 volatile int interruptCounter;
 
 hw_timer_t * timer = NULL;
@@ -83,6 +91,12 @@ void IRAM_ATTR onTimer() {
   portENTER_CRITICAL_ISR(&timerMux);
   interruptCounter++;
   portEXIT_CRITICAL_ISR(&timerMux);
+}
+
+void IRAM_ATTR isr(void* arg) {
+    Button* s = static_cast<Button*>(arg);
+    s->numberKeyPresses += 1;
+    s->pressed = true;
 }
 
 static void notifyCallback(
@@ -187,7 +201,9 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Starting Arduino BLE Central Mode (Client) Nordic UART Service");
 
-  pinMode(LED,OUTPUT);
+  pinMode(button1.PIN, INPUT_PULLUP);
+  attachInterruptArg(button1.PIN, isr, &button1, FALLING);
+
 
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
@@ -240,28 +256,20 @@ void loop() {
   //   Update the RX characteristic with the current time since boot string.
   
   if (connected) {
-//    if (1) {
-//      Serial.println("Notifications turned on");
-//      pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
-//    } else {
-//      Serial.println("Notifications turned off");
-//      pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOff, 2, true);
-//    }
-
-//     Toggle on/off value for notifications.
-//    onoff = onoff ? 0 : 1;
-
     // Set the characteristic's value to be the array of bytes that is actually a string
-    String timeSinceBoot = "Time since boot: " + String(millis()/1000);
-    pRXCharacteristic->writeValue(timeSinceBoot.c_str(), timeSinceBoot.length());
-    timerAlarmEnable(timer);
-    if (interruptCounter > 0) {
-      portENTER_CRITICAL(&timerMux);
-      interruptCounter--;
-      portEXIT_CRITICAL(&timerMux);
-      connected = 0;
+    if (button1.pressed) {
+        Serial.printf("Button 1 has been pressed %u times\n", button1.numberKeyPresses);
+        button1.pressed = false;
+        String timeSinceBoot = "Time since boot: " + String(millis()/1000);
+        pRXCharacteristic->writeValue(timeSinceBoot.c_str(), timeSinceBoot.length());
+        timerAlarmEnable(timer);
+        if (interruptCounter > 0) {
+          portENTER_CRITICAL(&timerMux);
+          interruptCounter--;
+          portEXIT_CRITICAL(&timerMux);
+          connected = 0;
+      }
     }
-
   } else {
     BLEScan* pBLEScan = BLEDevice::getScan();
     pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
