@@ -24,6 +24,8 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
+#define LED 2
+
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
 bool deviceConnected = false;
@@ -60,9 +62,11 @@ class MyCallbacks: public BLECharacteristicCallbacks {
           Serial.print(rxValue[i]);
 
         std::size_t found = rxValue.find("Time since boot");
-        if (found != std::string::npos)
+        if (found != std::string::npos) {
           flag = 1;
+          digitalWrite(LED,!digitalRead(LED));
 //        txValue = rxValue;
+        }
         Serial.println();
         Serial.println("*********");
       }
@@ -72,6 +76,8 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 
 void setup() {
   Serial.begin(115200);
+
+  pinMode(LED,OUTPUT);
 
   // Create the BLE Device
   BLEDevice::init("UART Service");

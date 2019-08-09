@@ -94,8 +94,8 @@ static void notifyCallback(
   for (int i = 0; i < length; i++) {
     // Serial.print((char)pData[i]);     // Print character to uart
     Serial.print(pData[i]);           // print raw data to uart
-    if (pData[i] == 'a')
-      digitalWrite(LED,!digitalRead(LED));
+//    if (pData[i] == 'a')
+//      digitalWrite(LED,!digitalRead(LED));
     Serial.print(" ");
 
     timerAlarmDisable(timer);
